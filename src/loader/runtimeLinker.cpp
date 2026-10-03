@@ -685,7 +685,181 @@ static bool KytyExceptionHandler(const Common::HostException::ExceptionInfo& exc
 			return true;
 		}
 	}
-	// Report whatever guest context can be read safely before terminating: which guest thread
+	#if KYTY_PLATFORM == KYTY_PLATFORM_WINDOWS
+
+	// ========================================================
+	// GTA V HDD STREAMER RESCUE #3
+	//
+	// Narrow experimental rescue for two observed GTA V
+	// HDD Streamer NULL-target writes.
+	//
+	// This runs only after TheCruZ's existing:
+	//
+	//   WaitForTransientUnmap()
+	//   HandleGpuFault()
+	//   RetryTransientUnmapFault()
+	//
+	// mechanisms have failed to resolve the exception.
+	// ========================================================
+
+	// --------------------------------------------------------
+	// RESCUE A: NULL RCX
+	//
+	// Observed fault:
+	//
+	//   RCX = 0
+	//   write fault address = 0
+	//
+	// Exact native sequence:
+	//
+	//   49 8d 42 01
+	//   48 89 01          <-- fault
+	//   49 8d 40 01
+	//   48 89 41 18
+	//
+	// The faulting instruction is:
+	//
+	//   mov [rcx], rax
+	//
+	// We replace RCX in the Windows CONTEXT with a
+	// thread-local scratch object and resume execution.
+	// --------------------------------------------------------
+
+	if (info->type == Common::HostException::ExceptionType::AccessViolation &&
+	    info->access_violation_type ==
+	        Common::HostException::AccessViolationType::Write &&
+	    info->access_violation_vaddr == 0 &&
+	    info->rcx == 0 &&
+	    info->native_context != nullptr) {
+
+		const uint64_t pc = info->exception_address;
+
+		constexpr uint8_t gta_streamer_rcx_pattern[] = {
+		    0x49, 0x8d, 0x42, 0x01,
+		    0x48, 0x89, 0x01,
+		    0x49, 0x8d, 0x40, 0x01,
+		    0x48, 0x89, 0x41, 0x18
+		};
+
+		// The faulting 48 89 01 begins four bytes into
+		// this exact sequence.
+		if (pc >= 4 &&
+		    IsReadableRange(pc - 4,
+		                     sizeof(gta_streamer_rcx_pattern))) {
+
+			const auto* code =
+			    reinterpret_cast<const uint8_t*>(pc - 4);
+
+			if (std::memcmp(
+			        code,
+			        gta_streamer_rcx_pattern,
+			        sizeof(gta_streamer_rcx_pattern)) == 0) {
+
+				alignas(64)
+				thread_local uint8_t gta_streamer_scratch_rcx[0x1000] {};
+
+				auto* context =
+				    static_cast<CONTEXT*>(info->native_context);
+
+				const uint64_t old_rcx = context->Rcx;
+
+				context->Rcx =
+				    reinterpret_cast<DWORD64>(
+				        gta_streamer_scratch_rcx);
+
+				std::printf(
+				    "*** GTA V HDD STREAMER RCX TARGET RESCUED *** "
+				    "pc=0x%016" PRIx64
+				    " old_rcx=0x%016" PRIx64
+				    " new_rcx=0x%016" PRIx64 "\n",
+				    info->exception_address,
+				    old_rcx,
+				    static_cast<uint64_t>(
+				        reinterpret_cast<uintptr_t>(
+				            gta_streamer_scratch_rcx)));
+
+				std::fflush(stdout);
+
+				return true;
+			}
+		}
+	}
+
+	// --------------------------------------------------------
+	// RESCUE B: NULL RDX
+	//
+	// Exact observed instruction:
+	//
+	//   48 89 42 48
+	//
+	// = mov [rdx+0x48], rax
+	//
+	// Only rescue this exact instruction when:
+	//
+	//   RDX == 0
+	//   fault address == 0x48
+	// --------------------------------------------------------
+
+	if (info->type == Common::HostException::ExceptionType::AccessViolation &&
+	    info->access_violation_type ==
+	        Common::HostException::AccessViolationType::Write &&
+	    info->access_violation_vaddr == 0x48 &&
+	    info->rdx == 0 &&
+	    info->native_context != nullptr) {
+
+		const uint64_t pc = info->exception_address;
+
+		constexpr uint8_t gta_streamer_rdx_instruction[] = {
+		    0x48, 0x89, 0x42, 0x48
+		};
+
+		if (IsReadableRange(
+		        pc,
+		        sizeof(gta_streamer_rdx_instruction))) {
+
+			const auto* code =
+			    reinterpret_cast<const uint8_t*>(pc);
+
+			if (std::memcmp(
+			        code,
+			        gta_streamer_rdx_instruction,
+			        sizeof(gta_streamer_rdx_instruction)) == 0) {
+
+				alignas(64)
+				thread_local uint8_t gta_streamer_scratch_rdx[0x1000] {};
+
+				auto* context =
+				    static_cast<CONTEXT*>(info->native_context);
+
+				const uint64_t old_rdx = context->Rdx;
+
+				context->Rdx =
+				    reinterpret_cast<DWORD64>(
+				        gta_streamer_scratch_rdx);
+
+				std::printf(
+				    "*** GTA V HDD STREAMER RDX TARGET RESCUED *** "
+				    "pc=0x%016" PRIx64
+				    " fault=0x%016" PRIx64
+				    " old_rdx=0x%016" PRIx64
+				    " new_rdx=0x%016" PRIx64 "\n",
+				    info->exception_address,
+				    static_cast<uint64_t>(
+				        info->access_violation_vaddr),
+				    old_rdx,
+				    static_cast<uint64_t>(
+				        reinterpret_cast<uintptr_t>(
+				            gta_streamer_scratch_rdx)));
+
+				std::fflush(stdout);
+
+				return true;
+			}
+		}
+	}
+
+#endif
+// Report whatever guest context can be read safely before terminating: which guest thread
 	// faulted, the register file, the faulting code bytes and the top of its stack.
 	{
 		char thread_name[64] = "(host thread)";

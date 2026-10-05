@@ -698,11 +698,11 @@ static bool KytyExceptionHandler(const Common::HostException::ExceptionInfo& exc
 // ========================================================
 
 {
-    auto *context = info->context;
+    auto *context = static_cast<PCONTEXT>(info->native_context);
 
     if (context != nullptr &&
-        info->exception_type == ExceptionType::AccessViolation &&
-        info->access_violation_type == AccessViolationType::Write) {
+        info->type == Common::HostException::ExceptionType::AccessViolation &&
+        info->access_violation_type == Common::HostException::AccessViolationType::Write) {
 
         const uint64_t pc = context->Rip;
 

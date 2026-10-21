@@ -1,3 +1,9 @@
+This was a HDD-Streamer crash fix but since most recent updates on TheCruZ KytyPS5-GTA , this HDD Streamer crash fix is no longer needed. 
+
+
+
+
+
 # KytyPS5-GTA
 
 A fork of [KytyPS5](https://github.com/KytyPS5/KytyPS5) focused on running

@@ -1,5 +1,8 @@
-This was a HDD-Streamer crash fix but since most recent updates on TheCruZ KytyPS5-GTA , this HDD Streamer crash fix is no longer needed. 
+Select v10 branch - it's the best fork-build
 
+----------------
+
+V7 had a HDD-Streamer crash fix but since most recent updates on TheCruZ KytyPS5-GTA , this HDD Streamer crash fix is no longer needed. 
 
 
 
